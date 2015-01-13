@@ -1,45 +1,84 @@
 //
 //  AppDelegate.m
-//  AppleWatchCompanion
+//  NanoCompanion
 //
-//  Created by Matthew Lathrop on 1/13/15.
-//  Copyright (c) 2015 AppBrew LLC. All rights reserved.
+//  Created by Steven Troughton-Smith on 13/01/2015.
+//  Copyright (c) 2015 High Caffeine Content. All rights reserved.
 //
 
 #import "AppDelegate.h"
 
-@interface AppDelegate ()
+@protocol Companion <NSObject>
+
+- (id)initFromPropertyList:(id)arg1;
+- (void)updatedIconGraph:(id)arg1;
 
 @end
 
 @implementation AppDelegate
 
+-(NSString *)sanitizedName:(NSString *)name
+{
+    NSString *s = [name stringByReplacingOccurrencesOfString:@"Settings" withString:@""];
+    
+    s = [s stringByReplacingOccurrencesOfString:@"Bridge" withString:@""];
+    s = [s stringByReplacingOccurrencesOfString:@"Nano" withString:@""];
+    return s;
+}
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Override point for customization after application launch.
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions{
+    
+    NSMutableArray *vcs = @[].mutableCopy;
+    
+    NSArray *paths = @[@"/System/Library/NanoPreferenceBundles/Applications/", @"/System/Library/NanoPreferenceBundles/General/", @"/System/Library/NanoPreferenceBundles/Customization/",@"/System/Library/NanoPreferenceBundles/Privacy/"];
+    
+    for (NSString *path in paths)
+    {
+        NSArray *category = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:path error:nil];
+        
+        for (NSString *bundle in category)
+        {
+            if ([bundle isEqualToString:@"NanoPassbookBridgeSettings.bundle"])
+                continue;
+            
+            NSLog(@"Loading Bundle %@", bundle);
+            
+            NSBundle *b = [NSBundle bundleWithPath:[path stringByAppendingPathComponent:bundle]];
+            [b load];
+            
+            UIViewController *vc = [[[b principalClass] alloc] init];
+            
+            if ([[vc class] isEqual:NSClassFromString(@"CSLUILayoutNavController")])
+            {
+                UIViewController<Companion> *carousel = [vc valueForKey:@"layoutViewController"];
+                
+                NSDictionary *defaultIcons = [NSDictionary dictionaryWithContentsOfFile:@"/System/Library/NanoPreferenceBundles/Customization/CarouselLayoutSettings.bundle/DefaultIconPositions.plist"];
+                
+                NSObject<Companion> *graph = [[NSClassFromString(@"CSLHexAppGraph") alloc] initFromPropertyList:defaultIcons];
+                [carousel updatedIconGraph:graph];
+            }
+            
+            if ([[vc class] isSubclassOfClass:[UINavigationController class]])
+            {
+                vc.tabBarItem.title = [self sanitizedName:b.infoDictionary[@"CFBundleName"]];
+                [vcs addObject:vc];
+            }
+            else
+            {
+                UINavigationController *navC = [[UINavigationController alloc] initWithRootViewController:vc];
+                navC.tabBarItem.title = [self sanitizedName:b.infoDictionary[@"CFBundleName"]];
+                [vcs addObject:navC];
+            }
+        }
+    }
+    
+    UITabBarController *tabVC = [[UITabBarController alloc] init];
+    
+    tabVC.viewControllers = vcs;
+    
+    self.window.rootViewController = tabVC;
+    
     return YES;
-}
-
-- (void)applicationWillResignActive:(UIApplication *)application {
-    // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-    // Use this method to pause ongoing tasks, disable timers, and throttle down OpenGL ES frame rates. Games should use this method to pause the game.
-}
-
-- (void)applicationDidEnterBackground:(UIApplication *)application {
-    // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-    // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
-}
-
-- (void)applicationWillEnterForeground:(UIApplication *)application {
-    // Called as part of the transition from the background to the inactive state; here you can undo many of the changes made on entering the background.
-}
-
-- (void)applicationDidBecomeActive:(UIApplication *)application {
-    // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-}
-
-- (void)applicationWillTerminate:(UIApplication *)application {
-    // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
 }
 
 @end
